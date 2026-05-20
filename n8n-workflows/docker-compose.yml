@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: agrosmart-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # User Management (Owner account)
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      - N8N_DEFAULT_OWNER_EMAIL=rbustosve@unitru.edu.pe
+      - N8N_DEFAULT_OWNER_PASSWORD=Ronaldon8n@
+      - N8N_DEFAULT_OWNER_FIRST_NAME=Ronaldo
+      - N8N_DEFAULT_OWNER_LAST_NAME=Bustos
+      # Basic Auth (fallback)
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=rbustosve@unitru.edu.pe
+      - N8N_BASIC_AUTH_PASSWORD=Ronaldon8n@
+      # General Config
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/Lima
+      - TZ=America/Lima
+      # Security
+      - N8N_SECURE_COOKIE=false
+      - N8N_RUNNERS_ENABLED=false
+      # Memory optimization
+      - NODE_OPTIONS=--max-old-space-size=256
+      - N8N_EXECUTIONS_DATA_PRUNE_TIMEOUT=60
+      - N8N_EXECUTIONS_DATA_SAVE_ON_PROGRESS=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./:/workflows:ro
+    networks:
+      - agrosmart-network
+    deploy:
+      resources:
+        limits:
+          memory: 500m
+        reservations:
+          memory: 256m
+    command: start
+
+volumes:
+  n8n_data:
+
+networks:
+  agrosmart-network:
+    driver: bridge

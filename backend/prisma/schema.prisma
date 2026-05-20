@@ -1,0 +1,289 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id         String   @id @default(uuid())
+  nombre     String
+  email      String   @unique
+  password   String
+  rol        RolUsuario @default(OPERADOR)
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  fincas     Finca[]
+  reportes   Reporte[]
+  alertas    Alerta[]
+
+  @@map("Usuario")
+}
+
+enum RolUsuario {
+  ADMIN
+  GESTOR
+  OPERADOR
+}
+
+model Finca {
+  id          String   @id @default(uuid())
+  nombre      String
+  ubicacion   String
+  latitud     Float?
+  longitud    Float?
+  area_total_ha Float?
+  propietario String?
+  usuario_id  String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  usuario     Usuario  @relation(fields: [usuario_id], references: [id])
+  lotes       Lote[]
+
+  @@map("Finca")
+}
+
+model Lote {
+  id                String   @id @default(uuid())
+  nombre            String
+  finca_id          String
+  area_ha           Float
+  tipo_suelo        String?
+  ph_suelo          Float?
+  materia_organica  Float?
+  coordenadas       Json?
+  activo            Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  finca             Finca    @relation(fields: [finca_id], references: [id])
+  temporadas        Temporada[]
+  sensores          Sensor[]
+  eventos_riego     EventoRiego[]
+  datos_climaticos  DatoClimatico[]
+  alertas           Alerta[]
+  optimizaciones    OptimizacionRiego[]
+
+  @@map("Lote")
+}
+
+model Cultivo {
+  id                      String   @id @default(uuid())
+  nombre                  String   @unique
+  nombre_cientifico       String?
+  tipo                    String?
+  ciclo_dias              Int?
+  rendimiento_promedio_kg_ha Float?
+  created_at              DateTime @default(now())
+
+  temporadas              Temporada[]
+
+  @@map("Cultivo")
+}
+
+model Temporada {
+  id                       String   @id @default(uuid())
+  lote_id                  String
+  cultivo_id               String
+  fecha_inicio             DateTime
+  fecha_fin_estimada       DateTime?
+  fecha_fin_real           DateTime?
+  estado                   EstadoTemporada @default(PLANIFICADA)
+  rendimiento_estimado_kg_ha Float?
+  rendimiento_real_kg_ha   Float?
+  notas                    String?
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  lote                     Lote     @relation(fields: [lote_id], references: [id])
+  cultivo                  Cultivo  @relation(fields: [cultivo_id], references: [id])
+  predicciones             PrediccionRendimiento[]
+
+  @@map("Temporada")
+}
+
+enum EstadoTemporada {
+  PLANIFICADA
+  ACTIVA
+  COSECHADA
+  CANCELADA
+
+  @@map("estado_temporada")
+}
+
+model Sensor {
+  id          String   @id @default(uuid())
+  lote_id     String
+  tipo        TipoSensor
+  modelo      String?
+  ubicacion   String?
+  activo      Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  lote        Lote     @relation(fields: [lote_id], references: [id])
+  lecturas    LecturaSensor[]
+
+  @@map("Sensor")
+}
+
+enum TipoSensor {
+  HUMEDAD_SUELO
+  TEMPERATURA
+  PH
+  LLUVIA
+  VIENTO
+  RADIACION_SOLAR
+
+  @@map("tipo_sensor")
+}
+
+model LecturaSensor {
+  id         String   @id @default(uuid())
+  sensor_id  String
+  valor      Float
+  unidad     String?
+  timestamp  DateTime @default(now())
+  valida     Boolean  @default(true)
+
+  sensor     Sensor   @relation(fields: [sensor_id], references: [id])
+
+  @@index([sensor_id, timestamp])
+  @@map("LecturaSensor")
+}
+
+model EventoRiego {
+  id                 String   @id @default(uuid())
+  lote_id            String
+  fecha_hora_inicio  DateTime
+  duracion_minutos   Int?
+  volumen_litros     Float?
+  tipo_riego         TipoRiego @default(GOTEO)
+  automatico         Boolean  @default(false)
+  notas              String?
+  created_at         DateTime @default(now())
+
+  lote               Lote     @relation(fields: [lote_id], references: [id])
+
+  @@index([lote_id, fecha_hora_inicio])
+  @@map("EventoRiego")
+}
+
+enum TipoRiego {
+  GOTEO
+  ASPERSION
+  INUNDACION
+  SURCOS
+
+  @@map("tipo_riego")
+}
+
+model DatoClimatico {
+  id                    String   @id @default(uuid())
+  lote_id               String
+  fecha                 DateTime @db.Date
+  temperatura_max       Float?
+  temperatura_min       Float?
+  humedad_promedio      Float?
+  precipitacion_mm      Float?
+  velocidad_viento_ms   Float?
+  evapotranspiracion    Float?
+  fuente                String?  @default("OpenWeatherMap")
+  created_at            DateTime @default(now())
+
+  lote                  Lote     @relation(fields: [lote_id], references: [id])
+
+  @@unique([lote_id, fecha])
+  @@index([lote_id, fecha])
+  @@map("DatoClimatico")
+}
+
+model PrediccionRendimiento {
+  id                              String   @id @default(uuid())
+  temporada_id                    String
+  rendimiento_predicho_kg_ha      Float
+  rendimiento_intervalo_inferior  Float?
+  rendimiento_intervalo_superior  Float?
+  precision_modelo                Float?
+  metodo_ensemble                 String?  @default("random_forest")
+  factores_influyentes            Json?
+  fecha_prediccion                DateTime @default(now())
+  created_at                      DateTime @default(now())
+
+  temporada                       Temporada @relation(fields: [temporada_id], references: [id])
+
+  @@index([temporada_id])
+  @@map("PrediccionRendimiento")
+}
+
+model OptimizacionRiego {
+  id                      String   @id @default(uuid())
+  lote_id                 String
+  fecha                   DateTime @db.Date
+  recomendacion_riego_mm  Float?
+  necesidad_riego_mm      Float?
+  humedad_actual          Float?
+  created_at              DateTime @default(now())
+
+  lote                    Lote     @relation(fields: [lote_id], references: [id])
+
+  @@unique([lote_id, fecha])
+  @@index([lote_id, fecha])
+  @@map("OptimizacionRiego")
+}
+
+model Reporte {
+  id         String       @id @default(uuid())
+  usuario_id String
+  tipo       TipoReporte
+  titulo     String
+  contenido  String?      @db.Text
+  url_pdf    String?
+  created_at DateTime     @default(now())
+
+  usuario    Usuario      @relation(fields: [usuario_id], references: [id])
+
+  @@index([usuario_id])
+  @@map("Reporte")
+}
+
+enum TipoReporte {
+  OPERACIONAL
+  GESTION
+  PREDICCION
+  RIEGO
+
+  @@map("tipo_reporte")
+}
+
+model Alerta {
+  id         String         @id @default(uuid())
+  lote_id    String?
+  usuario_id String?
+  tipo       String
+  severidad  SeveridadAlerta @default(MEDIA)
+  mensaje    String
+  leida      Boolean        @default(false)
+  created_at DateTime       @default(now())
+
+  lote       Lote?          @relation(fields: [lote_id], references: [id])
+  usuario    Usuario?       @relation(fields: [usuario_id], references: [id])
+
+  @@index([leida])
+  @@map("Alerta")
+}
+
+enum SeveridadAlerta {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+
+  @@map("severidad_alerta")
+}

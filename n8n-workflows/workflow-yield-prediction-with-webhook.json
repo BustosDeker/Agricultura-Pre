@@ -1,0 +1,305 @@
+{
+  "name": "Yield Prediction Workflow (with Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "57a048fd-e11e-45fe-b3c9-9c371d894a1f"
+    },
+    {
+      "parameters": {
+        "path": "yield-predict",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        150
+      ],
+      "webhookId": "yield-predict",
+      "id": "webhook-yield-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT t.id as temporada_id, t.lote_id, t.cultivo_id, t.fecha_inicio, t.rendimiento_estimado_kg_ha, c.nombre as cultivo_nombre, l.area_ha, l.tipo_suelo, l.ph_suelo, l.materia_organica FROM \"Temporada\" t JOIN \"Lote\" l ON t.lote_id = l.id JOIN \"Cultivo\" c ON t.cultivo_id = c.id WHERE t.estado = 'ACTIVA' AND t.fecha_fin_estimada > NOW()",
+        "options": {}
+      },
+      "name": "Get Active Seasons",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        75
+      ],
+      "id": "638e1114-fb33-45f6-a794-01d051259fa5",
+      "credentials": {
+        "postgres": {
+          "id": "GAhEDeRCmjf1ayrA",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM \"DatoClimatico\" WHERE lote_id = $1 AND fecha >= NOW() - INTERVAL '30 days' ORDER BY fecha DESC",
+        "options": {
+          "queryReplacement": "=lote_id={{ $('Get Active Seasons').first().json.lote_id }}"
+        }
+      },
+      "name": "Get Climate Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        75
+      ],
+      "id": "f7a334d1-5d4e-408b-9c64-f3ca79090b49",
+      "credentials": {
+        "postgres": {
+          "id": "GAhEDeRCmjf1ayrA",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.tipo, lec.valor, lec.timestamp FROM \"Sensor\" s JOIN \"LecturaSensor\" lec ON s.id = lec.sensor_id WHERE s.lote_id = $1 AND s.tipo IN ('HUMEDAD_SUELO', 'TEMPERATURA') AND lec.timestamp >= NOW() - INTERVAL '30 days' ORDER BY lec.timestamp DESC",
+        "options": {
+          "queryReplacement": "=lote_id={{ $('Get Active Seasons').first().json.lote_id }}"
+        }
+      },
+      "name": "Get Sensor Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        200,
+        75
+      ],
+      "id": "4e6ec5a1-6ff5-496b-936a-3d3ad9792e64",
+      "credentials": {
+        "postgres": {
+          "id": "GAhEDeRCmjf1ayrA",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5000/predict/yield",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  area_ha: Number($('Get Active Seasons').first().json.area_ha),\n  ph_suelo: Number($('Get Active Seasons').first().json.ph_suelo),\n  materia_organica: Number($('Get Active Seasons').first().json.materia_organica),\n  datos_climaticos: $('Get Climate Data').all().map(i => ({\n    fecha: i.json.fecha,\n    temperatura_max: Number(i.json.temperatura_max),\n    temperatura_min: Number(i.json.temperatura_min),\n    humedad_promedio: Number(i.json.humedad_promedio),\n    precipitacion_mm: Number(i.json.precipitacion_mm)\n  })),\n  lecturas_sensores: $('Get Sensor Data').all().map(i => ({\n    tipo: i.json.tipo,\n    valor: Number(i.json.valor),\n    timestamp: i.json.timestamp\n  })),\n  dias_trasplante: Math.floor((Date.now() - new Date($('Get Active Seasons').first().json.fecha_inicio).getTime()) / 86400000)\n}) }}"
+      },
+      "name": "Call ML Prediction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        400,
+        75
+      ],
+      "id": "2d5b16ab-0d5a-4c48-8e7c-ba1ca8ae4fda"
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "predicted_yield",
+              "stringValue": "={{ $json.predicted_yield || $json.rendimiento_predicho }}"
+            },
+            {
+              "name": "lower_bound",
+              "stringValue": "={{ $json.lower_bound || $json.intervalo_inferior }}"
+            },
+            {
+              "name": "upper_bound",
+              "stringValue": "={{ $json.upper_bound || $json.intervalo_superior }}"
+            },
+            {
+              "name": "model_accuracy",
+              "stringValue": "={{ $json.accuracy || $json.model_accuracy || $json.precision_modelo }}"
+            },
+            {
+              "name": "ensemble_method",
+              "stringValue": "={{ $json.ensemble_method || 'random_forest' }}"
+            },
+            {
+              "name": "influencing_factors",
+              "stringValue": "={{ JSON.stringify($json.factores_influyentes || []) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Prepare Prediction Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        600,
+        75
+      ],
+      "id": "331a500d-5b00-4e85-b981-07436990bc03"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO \"PrediccionRendimiento\" (id, temporada_id, rendimiento_predicho_kg_ha, rendimiento_intervalo_inferior, rendimiento_intervalo_superior, precision_modelo, metodo_ensemble, factores_influyentes, created_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW())",
+        "options": {
+          "queryReplacement": "=temporada_id={{ $('Get Active Seasons').first().json.temporada_id }},rendimiento={{ $('Prepare Prediction Data').first().json.predicted_yield }},intervalo_inf={{ $('Prepare Prediction Data').first().json.lower_bound }},intervalo_sup={{ $('Prepare Prediction Data').first().json.upper_bound }},precision={{ $('Prepare Prediction Data').first().json.model_accuracy }},metodo={{ $('Prepare Prediction Data').first().json.ensemble_method || 'random_forest' }},factores={{ JSON.stringify($('Prepare Prediction Data').first().json.influencing_factors || []) }}"
+        }
+      },
+      "name": "Save Prediction",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        800,
+        75
+      ],
+      "id": "291eda12-ad02-4b74-89b2-4f6ebcc1133a",
+      "credentials": {
+        "postgres": {
+          "id": "GAhEDeRCmjf1ayrA",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        75
+      ],
+      "id": "respond-yield-001"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Seasons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Seasons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Seasons": {
+      "main": [
+        [
+          {
+            "node": "Get Climate Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Climate Data": {
+      "main": [
+        [
+          {
+            "node": "Get Sensor Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sensor Data": {
+      "main": [
+        [
+          {
+            "node": "Call ML Prediction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call ML Prediction": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prediction Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prediction Data": {
+      "main": [
+        [
+          {
+            "node": "Save Prediction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Prediction": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "da48a829-ac49-4fda-bce4-02baccc2858f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b51db2fce127984e360593faa88cf1b34a939d89c80a596abba1a7e85058d909"
+  },
+  "id": "yield-webhook-v1",
+  "tags": []
+}

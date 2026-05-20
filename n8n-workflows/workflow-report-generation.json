@@ -1,0 +1,300 @@
+{
+  "name": "Report Generation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/report-generation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        2256
+      ],
+      "id": "ea069520-47b7-4235-82e5-93778131732c",
+      "webhookId": "a7f7e9f6-b160-4028-97fe-6a7ed223bba7"
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "report_type",
+              "stringValue": "={{ $json.report_type || 'operacional' }}"
+            },
+            {
+              "name": "lote_id",
+              "stringValue": "={{ $json.lote_id }}"
+            },
+            {
+              "name": "finca_id",
+              "stringValue": "={{ $json.finca_id }}"
+            },
+            {
+              "name": "usuario_id",
+              "stringValue": "={{ $json.usuario_id }}"
+            },
+            {
+              "name": "fecha_inicio",
+              "stringValue": "={{ $json.fecha_inicio }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extract Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        1840,
+        2256
+      ],
+      "id": "c7e64812-ddb5-4b9e-ae14-b42a597b051a"
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.report_type }}",
+        "rules": {
+          "rules": [
+            {},
+            {}
+          ]
+        },
+        "fallbackOutput": 0
+      },
+      "name": "Switch Report Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        2256
+      ],
+      "id": "f58aa5bb-0109-46db-9a85-43711e27b1af"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT l.nombre as lote_nombre, l.area_ha, l.tipo_suelo, e.fecha_hora_inicio, e.duracion_minutos, e.volumen_litros, e.tipo_riego FROM \"EventoRiego\" e JOIN \"Lote\" l ON e.lote_id = l.id WHERE l.id = $1 ORDER BY e.fecha_hora_inicio DESC LIMIT 100",
+        "options": {
+          "queryReplacement": "=lote_id={{ $('Extract Parameters').first().json.lote_id }}"
+        }
+      },
+      "name": "Get Operational Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        2144
+      ],
+      "id": "f027cb76-3f9b-4a88-9904-1fe53b9c960d",
+      "credentials": {
+        "postgres": {
+          "id": "Ajl1ra0ugTnGaGkY",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT f.nombre as finca_nombre, l.nombre as lote_nombre, c.nombre as cultivo_nombre, p.rendimiento_predicho_kg_ha, p.fecha_prediccion FROM \"PrediccionRendimiento\" p JOIN \"Temporada\" t ON p.temporada_id = t.id JOIN \"Lote\" l ON t.lote_id = l.id JOIN \"Finca\" f ON l.finca_id = f.id JOIN \"Cultivo\" c ON t.cultivo_id = c.id WHERE f.id = $1 AND p.fecha_prediccion >= NOW() - INTERVAL '30 days'",
+        "options": {
+          "queryReplacement": "=finca_id={{ $('Extract Parameters').first().json.finca_id }}"
+        }
+      },
+      "name": "Get Management Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        2400
+      ],
+      "id": "1252d924-195a-46b9-9ff4-b0bcf29d2ea7",
+      "credentials": {
+        "postgres": {
+          "id": "Ajl1ra0ugTnGaGkY",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst reportType = items[0]?.json?.report_type || $('Extract Parameters').first().json.report_type;\n\nconst generateOperationalReport = (rows) => {\n  return `\n    <html>\n      <head>\n        <meta charset=\"UTF-8\">\n        <style>\n          body { font-family: Arial, sans-serif; margin: 40px; }\n          h1 { color: #22c55e; }\n          table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n          th { background-color: #22c55e; color: white; }\n          .header { text-align: center; margin-bottom: 30px; }\n          .footer { margin-top: 50px; text-align: center; font-size: 12px; color: gray; }\n        </style>\n      </head>\n      <body>\n        <div class=\"header\">\n          <h1>Reporte Operacional</h1>\n          <p>Fecha de generación: ${new Date().toLocaleString('es-PE')}</p>\n        </div>\n        <h2>Detalle de Riegos</h2>\n        <table>\n          <tr>\n            <th>Lote</th>\n            <th>Fecha/Hora</th>\n            <th>Duración (min)</th>\n            <th>Volumen (L)</th>\n            <th>Tipo</th>\n          </tr>\n          ${rows.map(row => `\n            <tr>\n              <td>${row.lote_nombre}</td>\n              <td>${new Date(row.fecha_hora_inicio).toLocaleString('es-PE')}</td>\n              <td>${row.duracion_minutos}</td>\n              <td>${row.volumen_litros}</td>\n              <td>${row.tipo_riego}</td>\n            </tr>\n          `).join('')}\n        </table>\n        <div class=\"footer\">\n          <p>Sistema de Agricultura de Precisión - Reporte generado automáticamente</p>\n        </div>\n      </body>\n    </html>\n  `;\n};\n\nconst generateManagementReport = (rows) => {\n  const avg = rows.length > 0\n    ? (rows.reduce((sum, r) => sum + Number(r.rendimiento_predicho_kg_ha), 0) / rows.length).toFixed(0)\n    : 0;\n  return `\n    <html>\n      <head>\n        <meta charset=\"UTF-8\">\n        <style>\n          body { font-family: Arial, sans-serif; margin: 40px; }\n          h1 { color: #22c55e; }\n          table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n          th { background-color: #22c55e; color: white; }\n          .summary { background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin-top: 20px; }\n        </style>\n      </head>\n      <body>\n        <div class=\"header\">\n          <h1>Reporte de Gestión</h1>\n          <p>Fecha de generación: ${new Date().toLocaleString('es-PE')}</p>\n        </div>\n        <h2>Predicciones de Rendimiento por Lote</h2>\n        <table>\n          <tr>\n            <th>Finca</th>\n            <th>Lote</th>\n            <th>Cultivo</th>\n            <th>Rendimiento Predicho (kg/ha)</th>\n            <th>Fecha Predicción</th>\n          </tr>\n          ${rows.map(row => `\n            <tr>\n              <td>${row.finca_nombre}</td>\n              <td>${row.lote_nombre}</td>\n              <td>${row.cultivo_nombre}</td>\n              <td>${row.rendimiento_predicho_kg_ha}</td>\n              <td>${new Date(row.fecha_prediccion).toLocaleDateString('es-PE')}</td>\n            </tr>\n          `).join('')}\n        </table>\n        <div class=\"summary\">\n          <h3>Resumen Ejecutivo</h3>\n          <p>Total lotes evaluados: ${rows.length}</p>\n          <p>Rendimiento promedio estimado: ${avg} kg/ha</p>\n        </div>\n      </body>\n    </html>\n  `;\n};\n\nconst rows = items.map(i => i.json);\nconst html = reportType === 'operacional'\n  ? generateOperationalReport(rows)\n  : generateManagementReport(rows);\n\nreturn [{ json: { html, report_type: reportType } }];"
+      },
+      "name": "Generate HTML Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        2256
+      ],
+      "id": "ef73af42-a331-42a9-929d-a9243e86ae3f"
+    },
+    {
+      "parameters": {
+        "html": "{{ $json.html }}"
+      },
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1,
+      "position": [
+        2640,
+        2256
+      ],
+      "id": "4705189d-f9e8-48c0-ad69-b6e021da1db3"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO \"Reporte\" (id, usuario_id, tipo, titulo, contenido, url_pdf, created_at) VALUES (gen_random_uuid(), $1, 'OPERACIONAL'::tipo_reporte, 'Reporte Operacional', 'Contenido', 'pending', NOW()) RETURNING id",
+        "options": {
+          "queryReplacement": "=usuario_id={{ $('Extract Parameters').first().json.body.usuario_id }}"
+        }
+      },
+      "name": "Save Report Reference",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        2848,
+        2256
+      ],
+      "id": "dbd371f9-eef2-4e85-a631-306eb5df2dc6",
+      "credentials": {
+        "postgres": {
+          "id": "Ajl1ra0ugTnGaGkY",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, report_id: $json.id, message: 'Reporte generado exitosamente' }) }}",
+        "options": {}
+      },
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3040,
+        2256
+      ],
+      "id": "3ec1d48d-19ae-480b-ba18-030f6f232f66"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parameters": {
+      "main": [
+        [
+          {
+            "node": "Switch Report Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Report Type": {
+      "main": [
+        [
+          {
+            "node": "Get Operational Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Management Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Operational Data": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Management Data": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Convert to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to PDF": {
+      "main": [
+        [
+          {
+            "node": "Save Report Reference",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Report Reference": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "435ddd17-28c3-433a-b5e8-f8615011d946",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fef8c4ce373d7408ccd04dcac676f619dc04283cd7687ff46392b0b86de66881"
+  },
+  "id": "IRuomjybXhahFLu4",
+  "tags": []
+}

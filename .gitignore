@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+ml-service/venv/
+ml-service/__pycache__/
+ml-service/models/*.pkl
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# n8n
+n8n-workflows/n8n_data/
+
+# Prisma
+backend/prisma/migrations/

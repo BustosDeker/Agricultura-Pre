@@ -1,0 +1,291 @@
+{
+  "name": "Climate Data Ingest Workflow (with Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        -128
+      ],
+      "id": "8ba5c9c0-145c-4ede-995e-8118c3085359"
+    },
+    {
+      "parameters": {
+        "path": "climate-ingest",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        64
+      ],
+      "webhookId": "climate-ingest",
+      "id": "webhook-climate-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT l.id as lote_id, f.latitud as latitude, f.longitud as longitude FROM \"Lote\" l JOIN \"Finca\" f ON l.finca_id = f.id WHERE l.id IS NOT NULL AND f.latitud IS NOT NULL",
+        "options": {}
+      },
+      "name": "Get Lotes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        3000,
+        -128
+      ],
+      "id": "2e582835-ec97-4771-95ee-3b86d9aa9280",
+      "credentials": {
+        "postgres": {
+          "id": "d3uvQaFKCsPzWOIM",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "lat",
+              "value": "={{ $json.latitude }}"
+            },
+            {
+              "name": "lon",
+              "value": "={{ $json.longitude }}"
+            },
+            {
+              "name": "appid",
+              "value": "da71da6d6ec74cd6fe2b1eb07da48ef4"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Fetch Weather Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3200,
+        -128
+      ],
+      "id": "00cf178e-1fe2-4a54-934d-3dd3320a352a"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.cod }}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "name": "Check Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3400,
+        -128
+      ],
+      "id": "cec80281-ce7b-41f0-9b37-28a5dc432924"
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "lote_id",
+              "stringValue": "={{ $('Get Lotes').item.json.lote_id }}"
+            },
+            {
+              "name": "fecha",
+              "stringValue": "={{ new Date().toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "temperatura_max",
+              "stringValue": "=\t{{ $json.main.temp_max }}"
+            },
+            {
+              "name": "=temperatura_min",
+              "stringValue": "={{ $json.main.temp_min }}"
+            },
+            {
+              "name": "humedad_promedio",
+              "stringValue": "={{ $json.main.humidity }}"
+            },
+            {
+              "name": "precipitacion_mm",
+              "stringValue": "={{ $json.rain ? $json.rain['1h'] : 0 }}"
+            },
+            {
+              "name": "velocidad_viento_ms",
+              "stringValue": "={{ $json.wind.speed }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        3600,
+        -128
+      ],
+      "id": "6adc0c0e-1087-44a0-82c3-109454997290"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO \"DatoClimatico\" (id, lote_id, fecha, temperatura_max, temperatura_min, humedad_promedio, precipitacion_mm, velocidad_viento_ms, fuente, created_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) ON CONFLICT (lote_id, fecha) DO UPDATE SET temperatura_max = EXCLUDED.temperatura_max, temperatura_min = EXCLUDED.temperatura_min, humedad_promedio = EXCLUDED.humedad_promedio, precipitacion_mm = EXCLUDED.precipitacion_mm, velocidad_viento_ms = EXCLUDED.velocidad_viento_ms",
+        "options": {
+          "queryReplacement": "=lote_id={{ $('Prepare Data').item.json.lote_id }},fecha={{ $('Prepare Data').item.json.fecha }},temperatura_max={{ $('Prepare Data').item.json.temperatura_max }},temperatura_min={{ $('Prepare Data').item.json.temperatura_min }},humedad_promedio={{ $('Prepare Data').item.json.humedad_promedio }},precipitacion_mm={{ $('Prepare Data').item.json.precipitacion_mm }},velocidad_viento_ms={{ $('Prepare Data').item.json.velocidad_viento_ms }},fuente={{ $('Prepare Data').item.json.fuente }}"
+        }
+      },
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        3800,
+        -128
+      ],
+      "id": "f2148fad-7cd2-435b-b4eb-71845c16b160",
+      "credentials": {
+        "postgres": {
+          "id": "GAhEDeRCmjf1ayrA",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        4000,
+        -128
+      ],
+      "id": "respond-climate-001"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Lotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Lotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Lotes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Weather Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Weather Data": {
+      "main": [
+        [
+          {
+            "node": "Check Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Response": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f6cace09-e1ea-473f-9b6d-9ade8cbf6961",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b51db2fce127984e360593faa88cf1b34a939d89c80a596abba1a7e85058d909"
+  },
+  "id": "climate-webhook-v1",
+  "tags": []
+}
