@@ -1,9 +1,77 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { AppModule } from './app.module';
 
+const prisma = new PrismaClient();
+
+async function initDatabase() {
+  console.log('🔧 Inicializando base de datos...');
+  try {
+    const existingUsers = await prisma.usuario.count();
+    if (existingUsers === 0) {
+      console.log('🌱 Ejecutando seed inicial...');
+      
+      const hashedAdminPassword = await bcrypt.hash('admin123', 10);
+      const hashedOperatorPassword = await bcrypt.hash('operador123', 10);
+
+      await prisma.usuario.createMany({
+        data: [
+          {
+            nombre: 'Administrador',
+            email: 'admin@agro.pe',
+            password: hashedAdminPassword,
+            rol: 'ADMIN',
+          },
+          {
+            nombre: 'Operador',
+            email: 'operador@agro.pe',
+            password: hashedOperatorPassword,
+            rol: 'OPERADOR',
+          },
+        ],
+      });
+
+      await prisma.cultivo.createMany({
+        data: [
+          {
+            nombre: 'Maíz',
+            nombre_cientifico: 'Zea mays',
+            tipo: 'Grano',
+            ciclo_dias: 120,
+            rendimiento_promedio_kg_ha: 8000,
+          },
+          {
+            nombre: 'Trigo',
+            nombre_cientifico: 'Triticum aestivum',
+            tipo: 'Grano',
+            ciclo_dias: 150,
+            rendimiento_promedio_kg_ha: 6000,
+          },
+          {
+            nombre: 'Soja',
+            nombre_cientifico: 'Glycine max',
+            tipo: 'Legumbre',
+            ciclo_dias: 110,
+            rendimiento_promedio_kg_ha: 3500,
+          },
+        ],
+      });
+
+      console.log('✅ Seed completado exitosamente');
+    } else {
+      console.log('ℹ️  La base de datos ya tiene datos, saltando seed');
+    }
+  } catch (error) {
+    console.error('❌ Error al inicializar la base de datos:', error);
+  }
+}
+
 async function bootstrap() {
+  await initDatabase();
+
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
