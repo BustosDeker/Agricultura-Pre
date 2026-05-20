@@ -6,7 +6,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "npm run clean && npx prisma generate && tsc --noEmit false && ls -la dist/",
+    "build": "npm run clean && npx prisma generate && npx prisma db push && tsc --noEmit false && ls -la dist/",
     "clean": "rm -rf dist && mkdir -p dist",
     "start": "npm run build && node dist/main",
     "start:dev": "npx @nestjs/cli start --watch",

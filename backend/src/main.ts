@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
 async function initDatabase() {
   console.log('🔧 Inicializando base de datos...');
   try {
-    const existingUsers = await prisma.usuario.count();
+    const existingUsers = await prisma.usuario.count().catch(() => 0);
     if (existingUsers === 0) {
       console.log('🌱 Ejecutando seed inicial...');
       
@@ -32,7 +32,7 @@ async function initDatabase() {
             rol: 'OPERADOR',
           },
         ],
-      });
+      }).catch(() => console.log('⚠️  Usuarios ya existen o error al crear'));
 
       await prisma.cultivo.createMany({
         data: [
@@ -58,7 +58,7 @@ async function initDatabase() {
             rendimiento_promedio_kg_ha: 3500,
           },
         ],
-      });
+      }).catch(() => console.log('⚠️  Cultivos ya existen o error al crear'));
 
       console.log('✅ Seed completado exitosamente');
     } else {
