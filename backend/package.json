@@ -6,8 +6,9 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "npx prisma generate && npx @nestjs/cli build",
-    "start": "node dist/main",
+    "build": "npm run verify && npx prisma generate && npx @nestjs/cli build && ls -la dist/",
+    "verify": "node verify-build.js",
+    "start": "ls -la && ls -la dist/ 2>/dev/null || echo 'dist/ not found' && node dist/main",
     "start:dev": "npx @nestjs/cli start --watch",
     "start:debug": "npx @nestjs/cli start --debug --watch",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
