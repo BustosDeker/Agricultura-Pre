@@ -12,6 +12,7 @@ import { alertsApi } from '@/lib/api';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Cultivos', href: '/cultivos', icon: Sprout },
   { name: 'Lotes', href: '/lotes', icon: MapPin },
   { name: 'Predicciones', href: '/predicciones', icon: TrendingUp },
   { name: 'Riego', href: '/riego', icon: Droplets },
