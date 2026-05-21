@@ -353,10 +353,10 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 3001;
-  await app.listen(port);
-  console.log(`🚀 Backend corriendo en: http://localhost:${port}`);
-  console.log(`📚 Swagger UI: http://localhost:${port}/api/docs`);
+  const port = parseInt(process.env.PORT || '10000', 10);
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Backend corriendo en: http://0.0.0.0:${port}`);
+  console.log(`📚 Swagger UI: http://0.0.0.0:${port}/api/docs`);
 }
 
 bootstrap();
